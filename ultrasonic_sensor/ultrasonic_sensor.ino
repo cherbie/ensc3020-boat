@@ -17,7 +17,7 @@ float readPulse(void);
 static volatile unsigned long pulse = -1; // updated by interrupt
 static volatile bool state = false; // updated by interrupt
 
-void setup() {
+int main() {
   initialise();
   Serial.begin(9600);
   digitalWrite(LED1, HIGH);

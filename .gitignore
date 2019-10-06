@@ -1,2 +1,5 @@
 # Ignore Mac System Files
 .DS_Store
+
+# Ignore Arduino Execution Files
+*.hex
