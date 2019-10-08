@@ -60,6 +60,7 @@ void setup() {
   Serial.end();*/
 }
 
+/*This is the main function*/
 void loop(){
   float distance = 0;
   while(1) {
@@ -76,17 +77,19 @@ void loop(){
       }
     }
     if(distance < 30){
-        if(distance < 10){
-            backward();
+        if(distance < 10){  //if the boat is too close to the wall
+            brake();        //stop
+            delay(100);
+            backward();     //go back
             delay(100);
           }
-          brake();
-          delay(100);
-          spin_right();
+          brake();        //stop
+          delay(100);   
+          spin_right();     //U turn
           delay(100);
       }
       else{
-          forward();
+          forward();    //if no wall, going straight
         }
   }
   }
