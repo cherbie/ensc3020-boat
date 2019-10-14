@@ -22,15 +22,18 @@ void setup()
     pinMode(enB,OUTPUT);
 }
 
+/*
+*both motor should run in full speed straight forward 
+*/
 void loop()
 {
     
-     analogWrite(enA,100);
+    digitalWrite(enA,HIGH);
     digitalWrite(enB,HIGH);
 
-    analogWrite(in1,255);
+    analogWrite(in1,255); //adjustable pwm
     analogWrite(in2,0);
-    analogWrite(in3,255);
+    analogWrite(in3,255);   //adjustable pwm
     analogWrite(in4,0);
     
 }
