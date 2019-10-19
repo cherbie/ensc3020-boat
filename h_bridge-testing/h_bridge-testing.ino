@@ -26,6 +26,7 @@
 #define LEFT 0b1001
 #define REVERSE 0b1010
 #define RIGHT 0b0110
+#define BRAKE 0b0000
 
 void initialise(void);
 float distanceSensor(void);
@@ -36,42 +37,59 @@ void  motorDirection(uint8_t);
 void turn(uint8_t);
 
 static volatile unsigned long pulse = -1; // updated by interrupt
-static volatile bool state = false; // updated by interrupt
 
 void setup() {
   initialise();
-  Serial.begin(9600);
-  digitalWrite(LED1, HIGH);
   Serial.println("Reached");
-  float distance = 0;
+  float distance = 0, distance_avg = 0;
+  float distance_v1 = 0, distance_v2 = 0;
   uint8_t direction = 0;
-  //clock_t time_start, time_end;
+  
+
+  // --
   while(1) {
-    //time_start = clock();
    distance =  distanceSensor();
-   Serial.println(distance);
-   //distance = 120;
-   if(distance < 40) {
-     turn(LEFT);
+   
+   distance_avg = (distance + distance_v1 + distance_v2)/3; // average of ultrasonic sensor readings;
+   Serial.println(distance_avg);
+
+   if(distance_avg < 10) {
+     direction = REVERSE;
+     Serial.println("REVERSE");
+     motorSpeed(1.0);
+     _delay_ms(100);
+     direction = LEFT;
+     turn(direction);
    }
-   else if(distance < 50) {
-      direction = 0;
+   if(distance_avg <= 20) {
+     direction = LEFT;
+     Serial.println("LEFT");
+     turn(direction);
+   }
+   else if(distance_avg < 50) {
+      direction = BRAKE;
+      Serial.println("STOP");
       motorDirection(direction);
       motorSpeed(0.0); // speed of turn
-    }
-    else if(distance < 100) {
-      direction = 0b0101;
+   }
+   else if(distance_avg < 100) {
+      direction = STRAIGHT;
+      Serial.println("STRAIGHT SLOW");
       motorDirection(direction);
-      motorSpeed(distance/100);
-    }
-    else {
-      direction = 0b0101;
+      motorSpeed(distance_avg/100);
+   }
+   else {
+      direction = STRAIGHT;
+      Serial.println("STRAIGHT");
       motorDirection(direction);
-      motorSpeed(1);
-    }
-    _delay_ms(10);
-    //time_end = clock();
-    //Serial.println(time_end-time_start);
+      motorSpeed(1.0);
+   }
+
+    // -- UPDATE GLOBAL VARIABLES
+    distance_v1 = distance;
+    distance_v2 = distance_v1;
+    
+    _delay_ms(200);
   }
   Serial.end();
 }
@@ -100,14 +118,16 @@ void initialise() {
   analogWrite(MOTA_EN, 255);
   analogWrite(MOTB_EN, 255);
 
+  Serial.begin(9600);
   _delay_ms(10); // process initialisatison
 }
 
 void turn(uint8_t direction) {
   motorDirection(direction);
   motorSpeed(0.5);
-  _delay_ms(1000);
-  motorSpeed(0.0);
+  _delay_ms(2000);
+  direction = STRAIGHT;
+  motorSpeed(0.5);
 }
 
 // PWM
@@ -118,31 +138,10 @@ void motorSpeed(double percent) {
 }
 
 void motorDirection(uint8_t enable) {
-  digitalWrite(MOTA_IN1, enable & (1<<0)); //IN1
-  digitalWrite(MOTA_IN2, enable & (1<<1));
-  digitalWrite(MOTB_IN1, enable & (1<<2));
-  digitalWrite(MOTB_IN2, enable & (1<<3));
-}
-
-/**
- * Send 10 microsecond pulse to ultrasonic sensor, triggering distance measurement.
- * @return void
- */
-void triggerSensor(void) {
-  digitalWrite(TRIG, HIGH);
-  _delay_us(10);
-  digitalWrite(TRIG, LOW);
-}
-
-/**
- * Pulse conversion to distance measurement
- * @return distance in centimeters.
- */
-float readPulse(void) {
-  if(pulse > 38000 || pulse == 0) {
-    return -1;
-  }
-  return pulse/58; // distance calculation
+  digitalWrite(MOTA_IN1, enable & _BV(0));
+  digitalWrite(MOTA_IN2, enable & _BV(1));
+  digitalWrite(MOTB_IN1, enable & _BV(2));
+  digitalWrite(MOTB_IN2, enable & _BV(3));
 }
 
 /**
@@ -155,18 +154,9 @@ float distanceSensor(void) {
   digitalWrite(TRIG, HIGH);
   _delay_us(10);
   digitalWrite(TRIG, LOW);
-  pulse = pulseIn(ECHO, HIGH);
-  if(pulse > 38000 || pulse == 0) {
-    return -1;
+  unsigned long pulse = pulseIn(ECHO, HIGH);
+  if(pulse > 38000) {
+    return 300;
   }
   return pulse/58; // distance calculation
-}
-
-/**
- * Fetch the pulse length of the sensor.
- * Set the global variable value and alter the state.
- */
-void distanceInterrupt(void) {
-   pulse = pulseIn(ECHO, HIGH);
-   state = true;
 }
