@@ -37,60 +37,98 @@ void  motorDirection(uint8_t);
 void turn(uint8_t);
 
 static volatile unsigned long pulse = -1; // updated by interrupt
+MAG3110 mag = MAG3110(); //Instantiate MAG3110
 
 void setup() {
   initialise();
   Serial.println("Reached");
   float distance = 0, distance_avg = 0;
   float distance_v1 = 0, distance_v2 = 0;
-  uint8_t direction = 0;
+  uint8_t motor_direction = 0;
+  int x, y, z, mag_direction = 0; // magnetometer readings
 
-  // -- MAGNETOMETER INITIALISATION --
-  MAG3110 mag = MAG3110(); //Instantiate MAG3110
-  mag.initialize(); //Initialize the MAG3110
-  _delay_us(10);
+  // -- DETERMINE HEADING --
+  if(!mag.isCalibrated()) { // If we're not calibrated
+    if(!mag.isCalibrating()) { // And we're not currently calibrating
+      Serial.println("Entering calibration mode");
+      mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
+    }
+    else {
+      /* Must call every loop while calibrating to collect calibration data
+       * This will automatically exit calibration
+       * You can terminate calibration early by calling mag.exitCalMode();
+      **/
+      mag.calibrate(); 
+    }
+  }
+  int route_direction = 0;
+  int init_time = 0;
+  _delay_ms(2);
+  mag.readMag(&x, &y, &z);
+  route_direction = mag.readHeading();
 
+  Serial.print("Direction: ");
+  Serial.println(route_direction);
   
-
-  // --
+  // -- INFINITE LOOP --
   while(1) {
-   distance =  distanceSensor();
-   
-   distance_avg = (distance + distance_v1 + distance_v2)/3; // average of ultrasonic sensor readings;
-   Serial.println(distance_avg);
-
-   if(distance_avg < 10) {
-     direction = REVERSE;
-     Serial.println("REVERSE");
-     motorSpeed(1.0);
-     _delay_ms(100);
-     direction = LEFT;
-     turn(direction);
-   }
-   if(distance_avg <= 20) {
-     direction = LEFT;
-     Serial.println("LEFT");
-     turn(direction);
-   }
-   else if(distance_avg < 50) {
-      direction = BRAKE;
-      Serial.println("STOP");
-      motorDirection(direction);
-      motorSpeed(0.0); // speed of turn
-   }
-   else if(distance_avg < 100) {
-      direction = STRAIGHT;
-      Serial.println("STRAIGHT SLOW");
-      motorDirection(direction);
-      motorSpeed(distance_avg/100);
-   }
-   else {
-      direction = STRAIGHT;
-      Serial.println("STRAIGHT");
-      motorDirection(direction);
+    if(!mag.isCalibrated()) { // If we're not calibrated
+      if(!mag.isCalibrating()) { // And we're not currently calibrating
+        Serial.println("Entering calibration mode");
+        mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
+      }
+      else {
+        /* Must call every loop while calibrating to collect calibration data
+         * This will automatically exit calibration
+         * You can terminate calibration early by calling mag.exitCalMode();
+        **/
+        mag.calibrate(); 
+      }
+    }
+    else Serial.println("Calibrated!");
+    
+    mag.readMag(&x, &y, &z); // READING VALUES FROM THE MAGNETOMETER
+    mag_direction = mag.readHeading();
+    Serial.print("Current Direction: ");
+    Serial.println(mag_direction);
+    
+    distance =  distanceSensor();
+    
+    distance_avg = (distance + distance_v1 + distance_v2)/3; // average of ultrasonic sensor readings;
+    //Serial.println(distance_avg);
+    
+    if(distance_avg < 10) {
+      motor_direction = REVERSE;
+      Serial.println("REVERSE");
       motorSpeed(1.0);
-   }
-
+      _delay_ms(100);
+      motor_direction = LEFT;
+      turn(motor_direction);
+    }
+    if(distance_avg <= 20) {
+      motor_direction = LEFT;
+      Serial.println("LEFT");
+      turn(motor_direction);
+    }
+    else if(distance_avg < 50) {
+      motor_direction = BRAKE;
+      Serial.println("STOP");
+      motorDirection(motor_direction);
+      motorSpeed(0.0); // stop
+    }
+    else if(distance_avg < 100) {
+      motor_direction = STRAIGHT;
+      Serial.println("STRAIGHT SLOW");
+      motorDirection(motor_direction);
+      motorSpeed(distance_avg/100);
+    }
+    else {
+      motor_direction = STRAIGHT;
+      Serial.println("STRAIGHT");
+      motorDirection(motor_direction);
+      motorSpeed(1.0);
+    }
+    
     // -- UPDATE GLOBAL VARIABLES
     distance_v1 = distance;
     distance_v2 = distance_v1;
@@ -125,9 +163,11 @@ void initialise() {
   analogWrite(MOTB_EN, 255);
 
   Serial.begin(9600);
-
+  // -- MAGNETOMETER INITIALISATION --
+  
   Wire.begin(); //setup I2C bus
   Wire.setClock(400000);    // I2C fast mode, 400kHz
+  mag.initialize(); //Initialize the MAG3110
 
   _delay_ms(10); // process initialisatison
 }
