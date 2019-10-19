@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
-
+#include <SparkFun_MAG3110.h>
 
 // -- ULTRASONIC SENSOR --
 #define TRIG 3
@@ -44,6 +44,12 @@ void setup() {
   float distance = 0, distance_avg = 0;
   float distance_v1 = 0, distance_v2 = 0;
   uint8_t direction = 0;
+
+  // -- MAGNETOMETER INITIALISATION --
+  MAG3110 mag = MAG3110(); //Instantiate MAG3110
+  mag.initialize(); //Initialize the MAG3110
+  _delay_us(10);
+
   
 
   // --
@@ -119,6 +125,10 @@ void initialise() {
   analogWrite(MOTB_EN, 255);
 
   Serial.begin(9600);
+
+  Wire.begin(); //setup I2C bus
+  Wire.setClock(400000);    // I2C fast mode, 400kHz
+
   _delay_ms(10); // process initialisatison
 }
 
