@@ -1,5 +1,9 @@
 ## Autonomous Boat (ENSC3020)
 Source code for ENSC3020 unit project 2019 Semester 2.
+
+See Google Drive for research and deliverable documents:
+https://drive.google.com/drive/folders/1lsKZbr2dfvd6bikbaKKuB-Js75v27LJO?usp=sharing
+
 #### Task Description
 Connect your embedded controller to your model boat. Implement “drive-by-wire” from the controller for steering and drive system. Add two sensors to the boat:
 
@@ -17,7 +21,7 @@ Implement a program to “*drive across the pool*”:
 > @clayton-herbst |
 > @EkkIGI |
 > @wangyijun950 |
-> @Elnorias\'s
+> @Elornias
 
 #### Marking Criteria
  - 60%  - Functional Performance
