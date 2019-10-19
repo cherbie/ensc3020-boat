@@ -4,6 +4,8 @@
 #include <util/delay.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <time.h>
+
 
 // -- ULTRASONIC SENSOR --
 #define TRIG 3
@@ -11,44 +13,65 @@
 #define LED1 4
 
 // -- MOTOR & H-BRIDGE --
-#define PWM_MAX_POWER 255 // -> /255 % efficiency
+#define PWM_MAX 255 // -> /255 % efficiency
 #define MOTA_EN 5
-#define MOTA_IN1 7
+#define MOTA_IN1 6
 #define MOTA_IN2 8
-#define MOTB_EN 6
-#define MOTB_IN1 12
-#define MOTB_IN2 13
+#define MOTB_EN 9
+#define MOTB_IN1 10
+#define MOTB_IN2 11
+
+// -- DIRECTION --
+#define STRAIGHT 0b0101
+#define LEFT 0b1001
+#define REVERSE 0b1010
+#define RIGHT 0b0110
 
 void initialise(void);
 float distanceSensor(void);
 void triggerSensor(void);
 float readPulse(void);
-void motorSpeed(void);
+void motorSpeed(double);
 void  motorDirection(uint8_t);
+void turn(uint8_t);
 
 static volatile unsigned long pulse = -1; // updated by interrupt
 static volatile bool state = false; // updated by interrupt
 
-int main() {
+void setup() {
   initialise();
   Serial.begin(9600);
   digitalWrite(LED1, HIGH);
   Serial.println("Reached");
   float distance = 0;
   uint8_t direction = 0;
+  //clock_t time_start, time_end;
   while(1) {
-    distance =  distanceSensor();
-    Serial.println(distance);
-    //if(distance < 100) {
-      //motorSpeed();
-      direction = 0x5;
+    //time_start = clock();
+   distance =  distanceSensor();
+   Serial.println(distance);
+   //distance = 120;
+   if(distance < 40) {
+     turn(LEFT);
+   }
+   else if(distance < 50) {
+      direction = 0;
       motorDirection(direction);
-   /* }
+      motorSpeed(0.0); // speed of turn
+    }
+    else if(distance < 100) {
+      direction = 0b0101;
+      motorDirection(direction);
+      motorSpeed(distance/100);
+    }
     else {
-      motorSpeed(1);
-      direction = 0x00 + _BV(0) + _BV(2);
+      direction = 0b0101;
       motorDirection(direction);
-    }*/
+      motorSpeed(1);
+    }
+    _delay_ms(10);
+    //time_end = clock();
+    //Serial.println(time_end-time_start);
   }
   Serial.end();
 }
@@ -77,21 +100,28 @@ void initialise() {
   analogWrite(MOTA_EN, 255);
   analogWrite(MOTB_EN, 255);
 
-  //attachInterrupt(digitalPinToInterrupt(TRIG), distanceInterrupt, FALLING);
-  //interrupts();
   _delay_ms(10); // process initialisatison
 }
 
-void motorSpeed(void) {
-  digitalWrite(MOTA_EN, HIGH);
-  digitalWrite(MOTB_EN, HIGH);
+void turn(uint8_t direction) {
+  motorDirection(direction);
+  motorSpeed(0.5);
+  _delay_ms(1000);
+  motorSpeed(0.0);
+}
+
+// PWM
+void motorSpeed(double percent) {
+  int speed = percent * PWM_MAX;
+  analogWrite(MOTA_EN, speed);
+  analogWrite(MOTB_EN, speed);
 }
 
 void motorDirection(uint8_t enable) {
-  digitalWrite(MOTA_IN1, 1);
-  digitalWrite(MOTA_IN2, 0);
-  digitalWrite(MOTB_IN1, 1);
-  digitalWrite(MOTB_IN2, 0);
+  digitalWrite(MOTA_IN1, enable & (1<<0)); //IN1
+  digitalWrite(MOTA_IN2, enable & (1<<1));
+  digitalWrite(MOTB_IN1, enable & (1<<2));
+  digitalWrite(MOTB_IN2, enable & (1<<3));
 }
 
 /**
