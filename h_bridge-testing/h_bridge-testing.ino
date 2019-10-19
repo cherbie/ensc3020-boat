@@ -28,11 +28,14 @@
 #define RIGHT 0b0110
 #define BRAKE 0b0000
 
+// -- MAGNETOMETER --
+#define ERROR_MARGIN 5
+
 void initialise(void);
 float distanceSensor(void);
 void triggerSensor(void);
 float readPulse(void);
-void motorSpeed(double);
+void motorSpeed(double, double);
 void  motorDirection(uint8_t);
 void turn(uint8_t);
 
@@ -48,30 +51,9 @@ void setup() {
   int x, y, z, mag_direction = 0; // magnetometer readings
 
   // -- DETERMINE HEADING --
-  if(!mag.isCalibrated()) { // If we're not calibrated
-    if(!mag.isCalibrating()) { // And we're not currently calibrating
-      Serial.println("Entering calibration mode");
-      mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
-    }
-    else {
-      /* Must call every loop while calibrating to collect calibration data
-       * This will automatically exit calibration
-       * You can terminate calibration early by calling mag.exitCalMode();
-      **/
-      mag.calibrate(); 
-    }
-  }
-  int route_direction = 0;
-  int init_time = 0;
-  _delay_ms(2);
-  mag.readMag(&x, &y, &z);
-  route_direction = mag.readHeading();
-
-  Serial.print("Direction: ");
-  Serial.println(route_direction);
-  
-  // -- INFINITE LOOP --
-  while(1) {
+  int route_heading = 0;
+  while(route_heading == 0) {
+    // INSERT LED
     if(!mag.isCalibrated()) { // If we're not calibrated
       if(!mag.isCalibrating()) { // And we're not currently calibrating
         Serial.println("Entering calibration mode");
@@ -85,49 +67,103 @@ void setup() {
         mag.calibrate(); 
       }
     }
+    mag.readMag(&x, &y, &z);
+    route_heading = mag.readHeading();
+  }
+
+  Serial.print("Direction: ");
+  Serial.println(route_heading);
+  
+  // -- INFINITE LOOP --
+  while(1) {
+    distance =  distanceSensor();
+    
+    distance_avg = (distance + distance_v1 + distance_v2)/3; // average of ultrasonic sensor readings;
+    //Serial.println(distance_avg);
+
+    //  -- BEFORE DIRECTION --
+    
+    if(distance_avg < 10) {
+      motor_direction = REVERSE;
+      Serial.println("REVERSE");
+      motorSpeed(1.0, 1.0);
+      _delay_ms(2000);
+      turn(LEFT);
+      continue; // search again
+    }
+    else if(distance_avg <= 20) {
+      Serial.println("LEFT");
+      turn(LEFT);
+      continue;
+    }
+    else if(distance_avg < 50) {
+      Serial.println("STOP");
+      motorDirection(BRAKE);
+      motorSpeed(0.0, 0.0); // STOP
+      continue;
+    }
+    else { // GET MAGNETOMETER DIRECTION VALUES
+      motorDirection(STRAIGHT); // set motor directions to straight
+    }
+
+    // -- MAGNETOMETER READING --
+    
+    if(!mag.isCalibrated()) { // If we're not calibrated
+      if(!mag.isCalibrating()) { // And we're not currently calibrating
+        Serial.println("Entering calibration mode");
+        mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
+      }
+      else {
+        /* Must call every loop while calibrating to collect calibration data
+         * This will automatically exit calibration
+         * You can terminate calibration early by calling mag.exitCalMode();
+        **/
+        mag.calibrate(); 
+      }
+      continue; // do not proceed with code ... CALIBRATING
+    }
     else Serial.println("Calibrated!");
+    
+    int min, max;
     
     mag.readMag(&x, &y, &z); // READING VALUES FROM THE MAGNETOMETER
     mag_direction = mag.readHeading();
     Serial.print("Current Direction: ");
     Serial.println(mag_direction);
-    
-    distance =  distanceSensor();
-    
-    distance_avg = (distance + distance_v1 + distance_v2)/3; // average of ultrasonic sensor readings;
-    //Serial.println(distance_avg);
-    
-    if(distance_avg < 10) {
-      motor_direction = REVERSE;
-      Serial.println("REVERSE");
-      motorSpeed(1.0);
-      _delay_ms(100);
-      motor_direction = LEFT;
-      turn(motor_direction);
-    }
-    if(distance_avg <= 20) {
-      motor_direction = LEFT;
-      Serial.println("LEFT");
-      turn(motor_direction);
-    }
-    else if(distance_avg < 50) {
-      motor_direction = BRAKE;
-      Serial.println("STOP");
-      motorDirection(motor_direction);
-      motorSpeed(0.0); // stop
-    }
-    else if(distance_avg < 100) {
-      motor_direction = STRAIGHT;
-      Serial.println("STRAIGHT SLOW");
-      motorDirection(motor_direction);
-      motorSpeed(distance_avg/100);
-    }
+
+    if(route_heading <= (-180 + ERROR_MARGIN) || route_heading >= (180 - ERROR_MARGIN)) {
+      if(mag_direction > (-180 + ERROR_MARGIN)) { // RIGHT OFF COURSE
+        if(distance_avg < 100) motorSpeed(0.0, distance_avg/100); // LEFT OFF
+        else motorSpeed(0, 1.0);
+      }
+      else if(mag_direction < (180 - ERROR_MARGIN)) { // LEFT OFF COURSE
+        if(distance_avg < 100) motorSpeed(distance_avg/100, 0.0); // RIGHT OFF
+        else motorSpeed(1.0, 0.0); // RIGHT OFF
+      }
+      else {
+        if(distance_avg < 100) motorSpeed(distance_avg/100, distance_avg/100);
+        else motorSpeed(1.0, 1.0);
+      }
+    } 
     else {
-      motor_direction = STRAIGHT;
-      Serial.println("STRAIGHT");
-      motorDirection(motor_direction);
-      motorSpeed(1.0);
+      min = route_heading - ERROR_MARGIN;
+      max = route_heading + ERROR_MARGIN;
+      if(mag_direction < min) { // LEFT OFF COURSE
+        if(distance_avg < 100) motorSpeed(distance_avg/100, 0.0);
+        else motorSpeed(1.0, 0.0); // RIGHT OFF
+      }
+      else if(mag_direction > max) { // RIGHT OFF COURSE
+        if(distance_avg < 100) motorSpeed(0.0, distance_avg/100);
+        else motorSpeed(0.0, 1.0); // LEFT OFF
+      }
+      else {
+        if(distance_avg < 100) motorSpeed(distance_avg/100, distance_avg/100);
+        else motorSpeed(1.0, 1.0);
+      }
     }
+
+    // CARE ABOUT DIRECTION
+    
     
     // -- UPDATE GLOBAL VARIABLES
     distance_v1 = distance;
@@ -174,17 +210,17 @@ void initialise() {
 
 void turn(uint8_t direction) {
   motorDirection(direction);
-  motorSpeed(0.5);
+  motorSpeed(0.5, 0.5);
   _delay_ms(2000);
   direction = STRAIGHT;
-  motorSpeed(0.5);
+  motorSpeed(0.5, 0.5);
 }
 
 // PWM
-void motorSpeed(double percent) {
-  int speed = percent * PWM_MAX;
-  analogWrite(MOTA_EN, speed);
-  analogWrite(MOTB_EN, speed);
+void motorSpeed(double percentA, double percentB) {
+  //int speed = percent * PWM_MAX;
+  analogWrite(MOTA_EN, percentA * PWM_MAX);
+  analogWrite(MOTB_EN, percentB * PWM_MAX);
 }
 
 void motorDirection(uint8_t enable) {

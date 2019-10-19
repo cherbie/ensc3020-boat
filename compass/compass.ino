@@ -19,4 +19,3 @@ void setup()
 	compass.SetScale(1.3);
 	compass.SetMeasurementMode(Measurement_Continuous);
 }
-
