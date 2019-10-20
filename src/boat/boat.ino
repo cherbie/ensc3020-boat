@@ -9,12 +9,15 @@
 // -- ULTRASONIC SENSOR --
 #define TRIG 3
 #define ECHO 2 //INT0 pin used for external interrupts.
-#define LED1 4
+
+// -- LEDS --
+#define LED_Y 7
+#define LED_G 6
 
 // -- MOTOR & H-BRIDGE --
 #define PWM_MAX 255 // -> /255 % efficiency
 #define MOTA_EN 5
-#define MOTA_IN1 6
+#define MOTA_IN1 4
 #define MOTA_IN2 8
 #define MOTB_EN 9
 #define MOTB_IN1 10
@@ -60,6 +63,9 @@ void setup() {
 
   // -- DETERMINE HEADING --
   if(!mag.isCalibrated()) {
+    
+    digitalWrite(LED_Y, HIGH); // WARN OF CALIBRATION
+    
     if(!mag.isCalibrating()) { // And we're not currently calibrating
       Serial.println("Entering calibration mode");
       mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
@@ -123,63 +129,17 @@ void setup() {
           Serial.println("REVERSE");
           motorSpeed(1.0, 1.0);
           _delay_ms(1000);
+
+          digitalWrite(LED_G, LOW);
+          digitalWrite(LED_Y, LOW);
+          
+          while(1) { }; // INFINITE  LOOP
         }
         else { // GET MAGNETOMETER DIRECTION VALUES
           motorDirection(STRAIGHT); // set motor directions to straight
+          motorSpeed(0.5,0.5);
         }
-
-        // -- READ THE MAGNETOMETER VALUES --
-        mag.readMag(&x, &y, &z); // READING VALUES FROM THE MAGNETOMETER
-        mag_direction = mag.readHeading();
-        Serial.print("Current Direction: ");
-        Serial.print(mag_direction);
-        Serial.print(" / ");
-        Serial.println(route_heading);
-    
-        if (route_heading <= (-180 + ERROR_MARGIN) || route_heading >= (180 - ERROR_MARGIN)) {
-          Serial.println("DIRECTION SOUTH");
-          if (mag_direction > (-180 + ERROR_MARGIN)) { // RIGHT OFF COURSE
-            //if (distance_avg < 100) 
-            motorSpeed(0.0, distance_avg / 100); // LEFT OFF
-            //else motorSpeed(0.5, 1.0); // LEFT OFF
-            Serial.println("RIGHT OFF COURSE");
-          }
-          else if (mag_direction < (180 - ERROR_MARGIN)) { // LEFT OFF COURSE
-            //if (distance_avg < 100) 
-            motorSpeed(distance_avg / 100, 0.0); // RIGHT OFF
-            //else motorSpeed(1.0, 0.5); // RIGHT OFF
-            Serial.println("LEFT OFF COURSE");
-          }
-          else {
-            //if (distance_avg < 100) 
-            motorSpeed(distance_avg / 100, distance_avg / 100);
-            //else motorSpeed(1.0, 1.0);
-            Serial.println("STRAIGHT");
-          }
-        }
-        else {
-          min = route_heading - ERROR_MARGIN;
-          max = route_heading + ERROR_MARGIN;
-          if (mag_direction < min) { // LEFT OFF COURSE
-            //if (distance_avg < 100) 
-            motorSpeed(distance_avg / 100, 0.0); // RIGHT OFF
-            //else motorSpeed(1.0, 0.0); // RIGHT OFF
-            Serial.println("RIGHT OFF COURSE");
-          }
-          else if (mag_direction > max) { // RIGHT OFF COURSE
-            //if (distance_avg < 100) 
-            motorSpeed(0.0, distance_avg / 100); // LEFT OFF
-            //else motorSpeed(0.5, 1.0); // LEFT OFF
-            Serial.println("LEFT OFF COURSE");
-          }
-          else {
-            //if (distance_avg < 100) 
-            motorSpeed(distance_avg / 100, distance_avg / 100);
-            //else motorSpeed(1.0, 1.0);
-            Serial.println("STRAIGHT");
-          }
-        }
-    
+        
         // -- UPDATE GLOBAL VARIABLES
         distance_v1 = distance;
         distance_v2 = distance_v1;
@@ -208,8 +168,16 @@ void setup() {
        else Serial.println("Calibrated!");
   
       if(!calibrated) { // not calibrated
+        // -- WARN OF SELECTING DIRECTION
+        for(int i = 0; i < 4; i++) {
+          digitalWrite(LED_Y, LOW);
+          _delay_ms(500);
+          digitalWrite(LED_Y, HIGH);
+          _delay_ms(500);
+        }
+        
         Serial.println("Select direction");
-        _delay_ms(4000);
+        //_delay_ms(4000);
         route_heading = mag.readHeading();
         calibrated = true;
         if(route_heading < -170 && route_heading > 170) poles = -1;
@@ -217,10 +185,13 @@ void setup() {
         else poles = 0;
         Serial.print("Heading - ");
         Serial.println(route_heading);
+
+        digitalWrite(LED_Y, LOW);
+        digitalWrite(LED_G, HIGH); // STARTING PROCESS
       }
   
       //  -- BEFORE DIRECTION --
-  
+      
       // -- GET DISTANCE --
       distance =  distanceSensor();
       //distance_avg = distance;
@@ -321,7 +292,8 @@ void setup() {
 void initialise() {
   pinMode(ECHO, INPUT); // ultrasonic sensor
   pinMode(TRIG, OUTPUT); // ultrasonic sensor
-  pinMode(LED1, OUTPUT); // ultrasonic sensor
+  pinMode(LED_Y, OUTPUT); // ultrasonic sensor
+  pinMode(LED_G, OUTPUT);
   pinMode(MOTA_EN, OUTPUT); // PWM pin
   pinMode(MOTB_EN, OUTPUT); // PWM pin
   pinMode(MOTA_IN1, OUTPUT);
