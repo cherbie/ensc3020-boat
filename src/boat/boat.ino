@@ -43,6 +43,7 @@ void turn(int);
 // -- GLOBAL VARIABLES --
 static volatile unsigned long pulse = -1;
 int poles = 0; // 0 nothing, 1 = north, -1 = south
+int turned; // "LEG" of drive
 MAG3110 mag = MAG3110(); //Instantiate MAG3110
 
 
@@ -53,10 +54,11 @@ void setup() {
   float distance = 0, distance_avg = 0;
   float distance_v1 = 0, distance_v2 = 0;
   uint8_t motor_direction;
-  int x, y, z, mag_direction = 0; // magnetometer readings
+  int x, y, z, mag_direction = 0, min, max; // magnetometer readings
+  int route_heading = 0, turned = 1;
+  bool calibrated = false; // switch: 1 if calibrated, 0 otherwise
 
   // -- DETERMINE HEADING --
-  int route_heading = 0;
   if(!mag.isCalibrated()) {
     if(!mag.isCalibrating()) { // And we're not currently calibrating
       Serial.println("Entering calibration mode");
@@ -80,133 +82,235 @@ void setup() {
 
    Serial.println("--------");
    
-  int calibrated = 0; // switch: 1 if calibrated, 0 otherwise
   
 
   // -- INFINITE LOOP --
   while (1) {
     _delay_ms(200); // DELAY BETWEEN READINGS
-
-    // -- MAGNETOMETER READING --
-
-    if(!mag.isCalibrated()) { // If we're not calibrated
-      if(!mag.isCalibrating()) { // And we're not currently calibrating
-        Serial.println("Entering calibration mode");
-        mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
-      }
-      else {
-        /* Must call every loop while calibrating to collect calibration data
-           This will automatically exit calibration
-           You can terminate calibration early by calling mag.exitCalMode();*/
-
-        mag.calibrate();
-      }
-      continue; // do not proceed with code ... CALIBRATING
-     }
-     else Serial.println("Calibrated!");
-
-    if(calibrated!=1) {
-      Serial.println("Select direction");
-      _delay_ms(4000);
-      route_heading = mag.readHeading();
-      calibrated = 1;
-      if(route_heading < -170 && route_heading > 170) poles = -1;
-      else if(route_heading > -10 && route_heading < 10) poles = 1;
-      else  poles = 0;
-      Serial.print("Heading - ");
-      Serial.println(route_heading);
-    }
-
-    //  -- BEFORE DIRECTION --
-
-    // -- GET DISTANCE --
-    distance =  distanceSensor();
-    //distance_avg = distance;
-    distance_avg = (distance + distance_v1 + distance_v2) / 3; // average of ultrasonic sensor readings;
-    //Serial.println(distance_avg);
-
-    if (distance_avg <= 25) { // TOO CLOSE TO DO ANYTHING
-      motor_direction = REVERSE;
-      Serial.println("REVERSE");
-      motorSpeed(1.0, 1.0);
-      _delay_ms(2000);
-      //continue; // search again
-    }
-    else if (distance_avg <= 35) { // PERFORM THE TURN
-      Serial.println("LEFT");
-      turn(&route_heading);
-      //continue;
-    }
-    else if(distance_avg < 50 && distance_avg > 35) {
-      Serial.println("BRAKING EFFECT");
-      motorDirection(REVERSE);
-      motorSpeed(1.0,1.0);
-      _delay_ms(BRAKING_TIME_MS);
-      motorDirection(BRAKE);
-      motorSpeed(0.0, 0.0);
-      //continue;
-    }
-    else if (distance_avg < 60) {
-      Serial.println("STOP");
-      motorDirection(BRAKE);
-      motorSpeed(0.0, 0.0); // STOP
-      //continue; // AVERAGE VALUES ARE NOT UPDATED !!
-    } 
-    else { // GET MAGNETOMETER DIRECTION VALUES
-      motorDirection(STRAIGHT); // set motor directions to straight
-    }
     
-    int min, max;
+//---
+    if(turned >= 3) { // MOTOR HAS ALREADY SEEN THE WALL
+       Serial.println("Stationary");
+       /**
+        * PING PONG EFFECT WITH THE WALL.
+        */
+       if(!mag.isCalibrated()) { // If we're not calibrated
+          if(!mag.isCalibrating()) { // And we're not currently calibrating
+            Serial.println("Entering calibration mode");
+            mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
+          }
+          else {
+            /* Must call every loop while calibrating to collect calibration data
+               This will automatically exit calibration
+               You can terminate calibration early by calling mag.exitCalMode();*/
+    
+            mag.calibrate();
+          }
+          continue; // do not proceed with code ... CALIBRATING
+         }
+         else Serial.println("Calibrated!");
+    
+        //  -- BEFORE DIRECTION --
+    
+        // -- GET DISTANCE --
+        distance =  distanceSensor();
+        distance_avg = (distance + distance_v1 + distance_v2) / 3; // average of ultrasonic sensor readings;
+        Serial.print("Distance: ");
+        Serial.println(distance_avg);
+    
+        if (distance <= 30) { // TOO CLOSE TO DO ANYTHING
+          motor_direction = REVERSE;
+          Serial.println("REVERSE");
+          motorSpeed(1.0, 1.0);
+          _delay_ms(1000);
+        }
+        else { // GET MAGNETOMETER DIRECTION VALUES
+          motorDirection(STRAIGHT); // set motor directions to straight
+        }
 
-    // -- READ THE MAGNETOMETER VALUES --
-    mag.readMag(&x, &y, &z); // READING VALUES FROM THE MAGNETOMETER
-    mag_direction = mag.readHeading();
-    Serial.print("Current Direction: ");
-    Serial.print(mag_direction);
-    Serial.print(" / ");
-    Serial.println(route_heading);
+        // -- READ THE MAGNETOMETER VALUES --
+        mag.readMag(&x, &y, &z); // READING VALUES FROM THE MAGNETOMETER
+        mag_direction = mag.readHeading();
+        Serial.print("Current Direction: ");
+        Serial.print(mag_direction);
+        Serial.print(" / ");
+        Serial.println(route_heading);
+    
+        if (route_heading <= (-180 + ERROR_MARGIN) || route_heading >= (180 - ERROR_MARGIN)) {
+          Serial.println("DIRECTION SOUTH");
+          if (mag_direction > (-180 + ERROR_MARGIN)) { // RIGHT OFF COURSE
+            //if (distance_avg < 100) 
+            motorSpeed(0.0, distance_avg / 100); // LEFT OFF
+            //else motorSpeed(0.5, 1.0); // LEFT OFF
+            Serial.println("RIGHT OFF COURSE");
+          }
+          else if (mag_direction < (180 - ERROR_MARGIN)) { // LEFT OFF COURSE
+            //if (distance_avg < 100) 
+            motorSpeed(distance_avg / 100, 0.0); // RIGHT OFF
+            //else motorSpeed(1.0, 0.5); // RIGHT OFF
+            Serial.println("LEFT OFF COURSE");
+          }
+          else {
+            //if (distance_avg < 100) 
+            motorSpeed(distance_avg / 100, distance_avg / 100);
+            //else motorSpeed(1.0, 1.0);
+            Serial.println("STRAIGHT");
+          }
+        }
+        else {
+          min = route_heading - ERROR_MARGIN;
+          max = route_heading + ERROR_MARGIN;
+          if (mag_direction < min) { // LEFT OFF COURSE
+            //if (distance_avg < 100) 
+            motorSpeed(distance_avg / 100, 0.0); // RIGHT OFF
+            //else motorSpeed(1.0, 0.0); // RIGHT OFF
+            Serial.println("RIGHT OFF COURSE");
+          }
+          else if (mag_direction > max) { // RIGHT OFF COURSE
+            //if (distance_avg < 100) 
+            motorSpeed(0.0, distance_avg / 100); // LEFT OFF
+            //else motorSpeed(0.5, 1.0); // LEFT OFF
+            Serial.println("LEFT OFF COURSE");
+          }
+          else {
+            //if (distance_avg < 100) 
+            motorSpeed(distance_avg / 100, distance_avg / 100);
+            //else motorSpeed(1.0, 1.0);
+            Serial.println("STRAIGHT");
+          }
+        }
+    
+        // -- UPDATE GLOBAL VARIABLES
+        distance_v1 = distance;
+        distance_v2 = distance_v1;
+        continue; // PING PONG (INFINTE LOOP)
+     }
+// ---
 
-    if (route_heading <= (-180 + ERROR_MARGIN) || route_heading >= (180 - ERROR_MARGIN)) {
-      Serial.println("DIRECTION SOUTH");
-      if (mag_direction > (-180 + ERROR_MARGIN)) { // RIGHT OFF COURSE
-        if (distance_avg < 100) motorSpeed(0.5, distance_avg / 100); // LEFT OFF
-        else motorSpeed(0.5, 1.0); // LEFT OFF
-        Serial.println("RIGHT OFF COURSE");
+     // -- THE NORMAL CODE OF EXECUTION --
+     
+      // -- MAGNETOMETER READING --
+  
+      if(!mag.isCalibrated()) { // If we're not calibrated
+        if(!mag.isCalibrating()) { // And we're not currently calibrating
+          Serial.println("Entering calibration mode");
+          mag.enterCalMode(); //This sets the output data rate to the highest possible and puts the mag sensor in active mode
+        }
+        else {
+          /* Must call every loop while calibrating to collect calibration data
+             This will automatically exit calibration
+             You can terminate calibration early by calling mag.exitCalMode();*/
+  
+          mag.calibrate();
+        }
+        continue; // do not proceed with code ... CALIBRATING
+       }
+       else Serial.println("Calibrated!");
+  
+      if(!calibrated) { // not calibrated
+        Serial.println("Select direction");
+        _delay_ms(4000);
+        route_heading = mag.readHeading();
+        calibrated = true;
+        if(route_heading < -170 && route_heading > 170) poles = -1;
+        else if(route_heading > -10 && route_heading < 10) poles = 1;
+        else poles = 0;
+        Serial.print("Heading - ");
+        Serial.println(route_heading);
       }
-      else if (mag_direction < (180 - ERROR_MARGIN)) { // LEFT OFF COURSE
-        if (distance_avg < 100) motorSpeed(distance_avg / 100, 0.5); // RIGHT OFF
-        else motorSpeed(1.0, 0.5); // RIGHT OFF
-        Serial.println("LEFT OFF COURSE");
+  
+      //  -- BEFORE DIRECTION --
+  
+      // -- GET DISTANCE --
+      distance =  distanceSensor();
+      //distance_avg = distance;
+      distance_avg = (distance + distance_v1 + distance_v2) / 3; // average of ultrasonic sensor readings;
+      //Serial.println(distance_avg);
+  
+      if (distance_avg <= 25) { // TOO CLOSE TO DO ANYTHING
+        motor_direction = REVERSE;
+        Serial.println("REVERSE");
+        motorSpeed(1.0, 1.0);
+        _delay_ms(2000);
+        //continue; // search again
+      }
+      else if (distance_avg <= 40) { // PERFORM THE TURN
+        Serial.println("LEFT");
+        if(turned <= 1) {
+          turn(&route_heading); // FIRST LEG OF DRIVE
+          turned++;
+        }
+        else if(turned == 2) turned++; // 2ND LEG OF DRIVE ... ENTERING PING PONG STATE
+        //continue;
+      }
+      else if(distance_avg < 60 && distance_avg > 40) {
+        Serial.println("BRAKING EFFECT");
+        motorDirection(REVERSE);
+        motorSpeed(1.0,1.0);
+        _delay_ms(BRAKING_TIME_MS);
+        motorDirection(BRAKE);
+        motorSpeed(0.0, 0.0);
+        //continue;
+      }
+      else if (distance_avg < 60) {
+        Serial.println("STOP");
+        motorDirection(BRAKE);
+        motorSpeed(0.0, 0.0); // STOP
+        //continue; // AVERAGE VALUES ARE NOT UPDATED !!
+      } 
+      else { // GET MAGNETOMETER DIRECTION VALUES
+        motorDirection(STRAIGHT); // set motor directions to straight
+      }
+      
+      // -- READ THE MAGNETOMETER VALUES --
+      mag.readMag(&x, &y, &z); // READING VALUES FROM THE MAGNETOMETER
+      mag_direction = mag.readHeading();
+      Serial.print("Current Direction: ");
+      Serial.print(mag_direction);
+      Serial.print(" / ");
+      Serial.println(route_heading);
+  
+      if (route_heading <= (-180 + ERROR_MARGIN) || route_heading >= (180 - ERROR_MARGIN)) {
+        Serial.println("DIRECTION SOUTH");
+        if (mag_direction > (-180 + ERROR_MARGIN)) { // RIGHT OFF COURSE
+          if (distance_avg < 100) motorSpeed(0.5, distance_avg / 100); // LEFT OFF
+          else motorSpeed(0.5, 1.0); // LEFT OFF
+          Serial.println("RIGHT OFF COURSE");
+        }
+        else if (mag_direction < (180 - ERROR_MARGIN)) { // LEFT OFF COURSE
+          if (distance_avg < 100) motorSpeed(distance_avg / 100, 0.5); // RIGHT OFF
+          else motorSpeed(1.0, 0.5); // RIGHT OFF
+          Serial.println("LEFT OFF COURSE");
+        }
+        else {
+          if (distance_avg < 100) motorSpeed(distance_avg / 100, distance_avg / 100);
+          else motorSpeed(1.0, 1.0);
+          Serial.println("STRAIGHT");
+        }
       }
       else {
-        if (distance_avg < 100) motorSpeed(distance_avg / 100, distance_avg / 100);
-        else motorSpeed(1.0, 1.0);
-        Serial.println("STRAIGHT");
+        min = route_heading - ERROR_MARGIN;
+        max = route_heading + ERROR_MARGIN;
+        if (mag_direction < min) { // LEFT OFF COURSE
+          if (distance_avg < 100) motorSpeed(distance_avg / 100, 0.5); // RIGHT OFF
+          else motorSpeed(1.0, 0.5); // RIGHT OFF
+          Serial.println("RIGHT OFF COURSE");
+        }
+        else if (mag_direction > max) { // RIGHT OFF COURSE
+          if (distance_avg < 100) motorSpeed(0.5, distance_avg / 100); // LEFT OFF
+          else motorSpeed(0.5, 1.0); // LEFT OFF
+          Serial.println("LEFT OFF COURSE");
+        }
+        else {
+          if (distance_avg < 100) motorSpeed(distance_avg / 100, distance_avg / 100);
+          else motorSpeed(1.0, 1.0);
+          Serial.println("STRAIGHT");
+        }
       }
-    }
-    else {
-      min = route_heading - ERROR_MARGIN;
-      max = route_heading + ERROR_MARGIN;
-      if (mag_direction < min) { // LEFT OFF COURSE
-        if (distance_avg < 100) motorSpeed(distance_avg / 100, 0.5); // RIGHT OFF
-        else motorSpeed(1.0, 0.5); // RIGHT OFF
-        Serial.println("RIGHT OFF COURSE");
-      }
-      else if (mag_direction > max) { // RIGHT OFF COURSE
-        if (distance_avg < 100) motorSpeed(0.5, distance_avg / 100); // LEFT OFF
-        else motorSpeed(0.5, 1.0); // LEFT OFF
-        Serial.println("LEFT OFF COURSE");
-      }
-      else {
-        if (distance_avg < 100) motorSpeed(distance_avg / 100, distance_avg / 100);
-        else motorSpeed(1.0, 1.0);
-        Serial.println("STRAIGHT");
-      }
-    }
-
-    // -- UPDATE GLOBAL VARIABLES
-    distance_v1 = distance;
-    distance_v2 = distance_v1;
+  
+      // -- UPDATE GLOBAL VARIABLES
+      distance_v1 = distance;
+      distance_v2 = distance_v1;
   }
   Serial.end();
 }
@@ -235,7 +339,7 @@ void initialise() {
   analogWrite(MOTA_EN, 255);
   analogWrite(MOTB_EN, 255);
 
-  Serial.begin(9600);
+  //Serial.begin(9600);
   // -- MAGNETOMETER INITIALISATION --
 
   Wire.begin(); //setup I2C bus
@@ -303,6 +407,7 @@ void turn(int *heading) {
      current = mag.readHeading();
   }
 
+  // -- CORNER EXIT --
   motorDirection(STRAIGHT);
   motorSpeed(0.5, 0.5);
 }
