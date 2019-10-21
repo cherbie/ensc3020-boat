@@ -32,7 +32,7 @@
 
 // -- MAGNETOMETER --
 #define ERROR_MARGIN 5
-#define BRAKING_TIME_MS 700
+#define BRAKING_TIME_MS 600
 
 void initialise(void);
 float distanceSensor(void);
@@ -125,15 +125,20 @@ void setup() {
         Serial.println(distance_avg);
     
         if (distance <= 30) { // TOO CLOSE TO DO ANYTHING
-          motor_direction = REVERSE;
+          //motor_direction = REVERSE;
+          motorDirection(REVERSE);
           Serial.println("REVERSE");
           motorSpeed(1.0, 1.0);
-          _delay_ms(1000);
+          _delay_ms(BRAKING_TIME_MS);
 
           digitalWrite(LED_G, LOW);
           digitalWrite(LED_Y, LOW);
           
-          while(1) { }; // INFINITE  LOOP
+          while(1) { 
+            digitalWrite(MOTA_EN, LOW);
+            digitalWrite(MOTB_EN, LOW);
+            motorDirection(BRAKE);
+          } // INFINITE  LOOP
         }
         else { // GET MAGNETOMETER DIRECTION VALUES
           motorDirection(STRAIGHT); // set motor directions to straight
@@ -214,7 +219,7 @@ void setup() {
         else if(turned == 2) turned++; // 2ND LEG OF DRIVE ... ENTERING PING PONG STATE
         //continue;
       }
-      else if(distance_avg < 60 && distance_avg > 40) {
+      else if(distance_avg < 50 && distance_avg > 40) {
         Serial.println("BRAKING EFFECT");
         motorDirection(REVERSE);
         motorSpeed(1.0,1.0);
