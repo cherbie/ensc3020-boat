@@ -219,7 +219,7 @@ void setup() {
         else if(turned == 2) turned++; // 2ND LEG OF DRIVE ... ENTERING PING PONG STATE
         //continue;
       }
-      else if(distance_avg < 50 && distance_avg > 40) {
+      else if(distance_avg <= 50 && distance_avg > 40) {
         Serial.println("BRAKING EFFECT");
         motorDirection(REVERSE);
         motorSpeed(1.0,1.0);
